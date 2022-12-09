@@ -21,6 +21,7 @@ const setGrid = obj => {
 
 // scene
 const scene = new THREE.Scene()
+let avatar = null
 // canvas and render
 const canvas = document.querySelector(".webgl")
 const loadingElement = document.querySelector(".loading")
@@ -34,9 +35,51 @@ const makeCamera = (fov = 45) => {
 }
 const camera = makeCamera(75)
 camera.position.set(0, 14, -17)
-// camera.lookAt(0, 0, 0)
-scene.add(camera)
 const controls = new OrbitControls(camera, canvas)
+
+const ThirdAvatarCamera = {
+	camera: camera,
+	position: new THREE.Vector3(),
+	currentPosition: new THREE.Vector3(),
+	currentLookAt: new THREE.Vector3(),
+	init: function () {
+
+	},
+	calculateIdealOffset: function () {
+		const idealOffset = new THREE.Vector3(0, 10, -15)
+		let rotation
+		if (!avatar) {
+			rotation = new THREE.Quaternion()
+		} else {
+			rotation = avatar.quaternion
+		}
+		idealOffset.applyQuaternion(rotation)
+		idealOffset.add(this.position)
+		return idealOffset
+	},
+	calculateIdealLookAt: function () {
+		const idealLookat = new THREE.Vector3(0, 7, 0)
+		let rotation
+		if (!avatar) {
+			rotation = new THREE.Quaternion()
+		} else {
+			rotation = avatar.quaternion
+		}
+		idealLookat.applyQuaternion(rotation)
+		idealLookat.add(this.position)
+		return idealLookat
+	},
+	update: function (delta) {
+		const idealOffset = this.calculateIdealOffset()
+		const idealLookat = this.calculateIdealLookAt()
+		this.currentPosition.lerp(idealOffset, delta * 4)
+		this.currentLookAt.lerp(idealLookat, delta * 4)
+
+		camera.position.copy(this.currentPosition)
+		camera.lookAt(this.currentLookAt)
+	}
+}
+scene.add(camera)
 
 // light
 const ambientLight = new THREE.AmbientLight(0xffffff, .5)
@@ -342,35 +385,37 @@ let isReady = false
 let mixer
 let animationActions = {}
 // let gltfAnimations = []
-let avatar = null
 // load model FBX
 
 // const gltfManager = new THREE.LoadingManager()
 // gltfManager.onStart = function () {
-// 	loadingElement.style.display = "flex"
+// loadingElement.style.display = "flex"
 // }
 // gltfManager.onLoad = function () {
-// 	console.log("gltf", gltfAnimations);
-// 	isReady = true
-// 	StateObj.addState("Idle", Idle)
-// 	StateObj.addState("Walking", Walk)
-// 	StateObj.addState("Running", Run)
-// 	// StateObj.addState("jump", Jump)
-// 	StateObj.addState("turn_right", TurnRight)
-// 	StateObj.addState("turn_left", TurnLeft)
-// 	StateObj.set("Idle")
-// 	loadingElement.style.display = "none"
+// console.log("gltf", gltfAnimations);
+// isReady = true
+// StateObj.addState("Idle", Idle)
+// StateObj.addState("Walking", Walk)
+// StateObj.addState("Running", Run)
+// // StateObj.addState("jump", Jump)
+// StateObj.addState("turn_right", TurnRight)
+// StateObj.addState("turn_left", TurnLeft)
+// StateObj.set("Idle")
+// loadingElement.style.display = "none"
 // }
 // const gltfLoader = new GLTFLoader(gltfManager)
-// gltfLoader.load('./files/ninja/avatar.glb', function (gltf) {
-// const root = gltf.scenes[0]
-// root.traverse(mesh => {
-// 	mesh.castShadow = true
-// })
-// root.castShadow = true
-// root.scale.set(5, 5, 5)
-// avatar = root
-// mixer = new THREE.AnimationMixer(avatar)
+// gltfLoader.load('./files/avatar/walkglb.glb', function (gltf) {
+// 	console.log("gltf", gltf);
+// 	const root = gltf.scenes[0]
+// 	root.traverse(mesh => {
+// 		mesh.castShadow = true
+// 	})
+// 	root.castShadow = true
+// 	root.scale.set(5, 5, 5)
+// 	avatar = root
+// 	mixer = new THREE.AnimationMixer(root)
+// 	const action = mixer.clipAction(gltf.animations[0])
+// 	action.play()
 // gltfAnimations = gltf.animations.map(function (item) {
 // 	const action = mixer.clipAction(item)
 // 	return {
@@ -395,10 +440,11 @@ fbxLoader.load("./files/swat/Swat.fbx", (fbx) => {
 	fbx.scale.set(.05, .05, .05)
 	fbx.traverse(e => e.castShadow = true)
 	avatar = fbx
+	console.log("avatar", avatar);
 	const loadingManager = new THREE.LoadingManager()
 	loadingManager.onLoad = () => {
-		loadingElement.style.display = "none"
 		isReady = true
+		loadingElement.style.display = "none"
 		StateObj.addState("idle", Idle)
 		StateObj.addState("walk", Walk)
 		StateObj.addState("walkingBackwards", WalkingBackwards)
@@ -408,8 +454,8 @@ fbxLoader.load("./files/swat/Swat.fbx", (fbx) => {
 		StateObj.addState("turnLeft", TurnLeft)
 		StateObj.set("idle")
 	}
-	mixer = new THREE.AnimationMixer(avatar)
 
+	mixer = new THREE.AnimationMixer(avatar)
 	const _OnLoad = (animName, anim) => {
 		const clip = anim.animations.find(i => i.name === "mixamo.com")
 		const action = mixer.clipAction(clip);
@@ -500,6 +546,7 @@ const controlsInput = (delta) => {
 
 	controlObj.position.add(forward)
 	controlObj.position.add(sideways)
+	ThirdAvatarCamera.position.copy(controlObj.position)
 	if (mixer) {
 		mixer.update(delta)
 	}
@@ -553,6 +600,25 @@ ground.receiveShadow = true
 ground.rotation.x = -Math.PI * 0.5
 scene.add(ground)
 
+const rockGroup = new THREE.Group()
+const rockPosition = new THREE.Vector3(20, 10, 30)
+
+const rockGeometry = new THREE.BoxGeometry(5, 20, 20)
+const rockGeometry1 = new THREE.BoxGeometry(5, 10, 10)
+const rockGeometry2 = new THREE.BoxGeometry(5, 30, 30)
+const rockMaterial = new THREE.MeshPhongMaterial({ color: "grey" })
+const rockMaterial1 = new THREE.MeshPhongMaterial({ color: "#e0e0e0" })
+const rock = new THREE.Mesh(rockGeometry, rockMaterial)
+const rock1 = new THREE.Mesh(rockGeometry1, rockMaterial)
+const rock2 = new THREE.Mesh(rockGeometry2, rockMaterial1)
+rock1.position.set(-10, 0, 0)
+rock2.position.set(-50, 0, 0)
+rock.castShadow = true
+rock.receiveShadow = true
+rockGroup.add(rock, rock1, rock2)
+rockGroup.position.copy(rockPosition)
+scene.add(rockGroup)
+
 // scene.add(new THREE.CameraHelper(directionalLight.shadow.camera))
 
 renderer.shadowMap.enabled = true
@@ -578,6 +644,7 @@ function animate(time) {
 	// console.log("animation", animationActions);
 	if (isReady) {
 		controlsInput(delta)
+		ThirdAvatarCamera.update(delta)
 	}
 	renderer.render(scene, camera)
 	window.requestAnimationFrame(animate)
